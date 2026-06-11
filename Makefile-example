@@ -1,0 +1,147 @@
+# Makefile-example — starting point for a retro-go port using this toolkit.
+#
+# Layout it assumes: this file lands at the ROOT of your port project and the
+# toolkit is a submodule:
+#
+#   git submodule add git@github.com:slash-proc/gnw-retro-go-porting-toolkit.git retro-go-porting-toolkit
+#   cp retro-go-porting-toolkit/Makefile-example Makefile
+#
+#   make build-firmware     # build/firmware.bin
+#   make flash-firmware     # flash it to internal bank2 with gnwmanager
+#   make flash-app          # flash your core's blob to external flash
+#
+# Your core/app build goes at the bottom; the firmware publishes its API as a
+# gw_firmware_abi_t table at VTOR+0x400, which your core reads at runtime — no
+# linking against firmware symbols.
+#
+# Flash-only for now; an SDCARD variant will follow.
+
+CROSS_COMPILE ?= arm-none-eabi-
+CC      = $(CROSS_COMPILE)gcc
+OBJCOPY = $(CROSS_COMPILE)objcopy
+
+.PHONY: all build-firmware flash flash-firmware flash-app start-app clean
+
+all: build-firmware
+
+# Where your app blob lives in external flash (4K-aligned).
+EXTFLASH_OFFSET_MB ?= 20
+EXTFLASH_OFFSET = $(shell echo $$(($(EXTFLASH_OFFSET_MB) * 1024 * 1024)))
+
+# Total external flash size; 64 = the typical upgrade chip (stock is 1).
+EXTFLASH_SIZE_MB ?= 64
+
+# Internal flash bank the firmware lives in: 2 (default, links at 0x08100000)
+# or 1 (links at 0x08000000 — also what a bank-swapped bank 2 executes at).
+INTFLASH_BANK ?= 2
+ifeq ($(INTFLASH_BANK),1)
+INTFLASH_ORIGIN = 0x08000000
+else
+INTFLASH_ORIGIN = 0x08100000
+endif
+INTFLASH_SIZE_KB ?= 256
+
+# Display pipeline: RGB565 (default; 300K double-buffer reserve) or LUT8
+# (8-bit indexed; 160K reserve incl. slack for the audio DMA ping-pong).
+# Sizes the linker's framebuffer pool and sets LCD_MODE_DEFAULT (lcd_mode_t).
+LCD_MODE ?= RGB565
+ifeq ($(LCD_MODE),LUT8)
+FB_BYTES = 163840
+else
+FB_BYTES = 307200
+endif
+
+# === toolkit firmware ==============================================================
+FWDIR = retro-go-porting-toolkit
+
+FW_HAL_SOURCES = \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_ospi.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc_ex.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_gpio.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_spi.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_flash.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_flash_ex.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_cortex.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pwr.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_pwr_ex.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_ltdc.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_mdma.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rtc.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rtc_ex.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dma.c \
+$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dma_ex.c \
+$(FWDIR)/deps/Core/Src/flash.c
+
+FW_SRCS = $(FWDIR)/src/boot.c $(FWDIR)/src/usart.c $(FWDIR)/src/ltdc.c $(FWDIR)/src/libc.c \
+       $(FWDIR)/src/test.c $(FWDIR)/src/mm.c $(FWDIR)/src/audio_sai.c \
+       $(FWDIR)/src/odroid_system.c $(FWDIR)/src/persist.c $(FWDIR)/src/input.c \
+       $(FWDIR)/src/overlay.c $(FWDIR)/src/lfs_flash.c $(FWDIR)/src/loader.c \
+       $(FWDIR)/src/firmware_abi.c \
+       $(FWDIR)/deps/littlefs/lfs.c $(FWDIR)/deps/littlefs/lfs_util.c \
+       $(FWDIR)/src/board/system_stm32h7xx.c \
+       $(FWDIR)/src/board/board.c \
+       $(FW_HAL_SOURCES)
+
+FW_LINKER = $(FWDIR)/linker.ld
+FW_OBJS = $(FW_SRCS:%.c=build/fw/%.o)
+
+FW_CFLAGS = -mcpu=cortex-m7 -mthumb -std=c11 -mfpu=fpv5-d16 -mfloat-abi=hard --specs=nano.specs
+FW_CFLAGS += -nostartfiles -g -nostdlib -ffreestanding
+FW_CFLAGS += -I$(FWDIR)/include \
+          -I$(FWDIR)/deps/Core/Inc \
+          -I$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Inc \
+          -I$(FWDIR)/deps/Drivers/STM32H7xx_HAL_Driver/Inc/Legacy \
+          -I$(FWDIR)/deps/Drivers/CMSIS/Device/ST/STM32H7xx/Include \
+          -I$(FWDIR)/deps/Drivers/CMSIS/Include \
+          -I$(FWDIR)/src/board
+# INTFLASH_BANK also reaches SystemInit, which points VTOR at the matching bank.
+FW_CFLAGS += -DEXTFLASH_OFFSET=$(EXTFLASH_OFFSET) -DEXTFLASH_SIZE_MB=$(EXTFLASH_SIZE_MB) \
+          -DINTFLASH_BANK=$(INTFLASH_BANK) \
+          -DLCD_MODE_DEFAULT=LCD_MODE_$(LCD_MODE) -DUSE_HAL_DRIVER -DSTM32H7B0xx
+# LittleFS (vendored): static buffers, no debug/trace/assert bloat.
+FW_CFLAGS += -I$(FWDIR)/deps/littlefs -DLFS_NO_MALLOC -DLFS_NO_DEBUG -DLFS_NO_WARN \
+          -DLFS_NO_ERROR -DLFS_NO_TRACE -DLFS_NO_ASSERT
+
+build-firmware: build/firmware.bin
+
+build/fw/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(FW_CFLAGS) -c $< -o $@
+
+build/firmware.out: $(FW_OBJS) $(FW_LINKER)
+	$(CC) $(FW_CFLAGS) -T $(FW_LINKER) -Wl,-Map=build/fw/main.map -Wl,--gc-sections \
+	-Wl,--defsym=__FB_BYTES=$(FB_BYTES) \
+	-Wl,--defsym=__INTFLASH_ORIGIN=$(INTFLASH_ORIGIN) \
+	-Wl,--defsym=__INTFLASH_SIZE=$$(($(INTFLASH_SIZE_KB) * 1024)) \
+	-Wl,--defsym=__EXTFLASH_SIZE=$$(($(EXTFLASH_SIZE_MB) * 1024 * 1024)) -o $@ \
+	-Wl,--start-group $(FW_OBJS) -lgcc -lc -lm -lnosys -Wl,--end-group
+
+build/firmware.bin: build/firmware.out
+	$(OBJCOPY) -O binary $< $@
+
+# === flashing (gnwmanager) =========================================================
+# CAUTION: flashing internal flash overwrites whatever is in that bank. If bank 1
+# holds your rescue bootloader, keep the firmware in bank 2 (as here).
+flash: flash-firmware flash-app
+
+flash-firmware: build/firmware.bin
+	gnwmanager flash bank$(INTFLASH_BANK) --file build/firmware.bin
+
+# Replace build/app.bin with your core's blob (XIP from external flash at
+# EXTFLASH_OFFSET; the firmware maps OSPI memory-mapped at 0x90000000).
+flash-app: build/app.bin
+	gnwmanager flash ext build/app.bin --offset $(EXTFLASH_OFFSET)
+
+# Boot the firmware in its bank (no power cycle needed).
+start-app:
+	gnwmanager start bank$(INTFLASH_BANK)
+
+# === your core/app build goes here =================================================
+# build/app.bin: ...
+
+clean:
+	rm -rf build
