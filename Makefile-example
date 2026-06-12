@@ -51,6 +51,11 @@ else
 FB_BYTES = 307200
 endif
 
+# Storage backend lever (mirrors real retro-go): SD_CARD=0 uses LittleFS-on-flash
+# only; SD_CARD=1 also builds FatFs + the SD-over-SPI driver (probes SPI1 then
+# soft-SPI). Reaches the firmware as -DSD_CARD.
+SD_CARD ?= 0
+
 # === toolkit firmware ==============================================================
 FWDIR = retro-go-porting-toolkit
 
@@ -87,6 +92,15 @@ FW_SRCS = $(FWDIR)/src/boot.c $(FWDIR)/src/usart.c $(FWDIR)/src/ltdc.c $(FWDIR)/
        $(FW_HAL_SOURCES)
 
 FW_LINKER = $(FWDIR)/linker.ld
+
+# SD-card (FAT) backend sources, only when the lever is on.
+ifeq ($(SD_CARD),1)
+FW_SRCS += $(FWDIR)/src/sdcard.c \
+       $(FWDIR)/deps/FatFs/ff.c $(FWDIR)/deps/FatFs/ffsystem.c \
+       $(FWDIR)/deps/FatFs/ffunicode.c $(FWDIR)/deps/FatFs/diskio.c \
+       $(FWDIR)/deps/FatFs/user_diskio_spi.c $(FWDIR)/deps/FatFs/gw_timer.c
+endif
+
 FW_OBJS = $(FW_SRCS:%.c=build/fw/%.o)
 
 FW_CFLAGS = -mcpu=cortex-m7 -mthumb -std=c11 -mfpu=fpv5-d16 -mfloat-abi=hard --specs=nano.specs
@@ -105,6 +119,11 @@ FW_CFLAGS += -DEXTFLASH_OFFSET=$(EXTFLASH_OFFSET) -DEXTFLASH_SIZE_MB=$(EXTFLASH_
 # LittleFS (vendored): static buffers, no debug/trace/assert bloat.
 FW_CFLAGS += -I$(FWDIR)/deps/littlefs -DLFS_NO_MALLOC -DLFS_NO_DEBUG -DLFS_NO_WARN \
           -DLFS_NO_ERROR -DLFS_NO_TRACE -DLFS_NO_ASSERT
+# Storage lever + FatFs include path (when SD_CARD=1).
+FW_CFLAGS += -DSD_CARD=$(SD_CARD)
+ifeq ($(SD_CARD),1)
+FW_CFLAGS += -I$(FWDIR)/deps/FatFs
+endif
 
 build-firmware: build/firmware.bin
 

@@ -35,6 +35,13 @@
 
 extern OSPI_HandleTypeDef hospi1;
 
+/* SD card over SPI1 (Tim's mod). Active only when SD_CARD==1. */
+#define SD_VCC_GPIO_Port GPIOA
+#define SD_VCC_Pin       GPIO_PIN_15
+#define SD_CS_GPIO_Port  GPIOB
+#define SD_CS_Pin        GPIO_PIN_9
+extern SPI_HandleTypeDef hspi1;
+
 void Error_Handler(void);
 void wdog_refresh(void);
 

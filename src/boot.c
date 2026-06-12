@@ -95,7 +95,13 @@ __attribute__((section(".reset_isr"))) void reset_isr()
     // later from the persistence layer). g_lfs_status records the result.
     extern int lfs_flash_mount(void);
     lfs_flash_mount();
-    
+
+#if SD_CARD == 1
+    // Mount the SD-card filesystem (FAT) — probes SPI1 then soft-SPI.
+    extern void sdcard_init(void);
+    sdcard_init();
+#endif
+
     // "Fake retro-go" launch: find the app image on extflash (wherever it was
     // installed), relocate it to that address, and get its entry point. Falls back
     // to the fixed default location if no relocatable header is found.
