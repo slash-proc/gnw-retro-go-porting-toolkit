@@ -59,12 +59,13 @@ SECTIONS {
     } > ITCMRAM AT > FLASH
     __itcram_text_lma = LOADADDR(.itcram_text);
 
-    /* Firmware mutable state (.data/.bss) and the malloc heap live in AHBRAM
-       (D2 SRAM @ 0x30000000), NOT DTCMRAM. An app may repurpose all of DTCMRAM
-       for its own data/heap, which would otherwise clobber firmware globals
-       the app still calls into at runtime — the malloc free-list, systick_cnt,
-       HAL state, etc. AHBRAM is used by neither the firmware nor the app, so
-       this state survives the handoff. */
+    /* Firmware mutable state (.data/.bss) and the malloc heap live in DTCMRAM,
+       MIRRORING REAL RETRO-GO: there the firmware owns DTCM (its .data/.bss,
+       85K heap, 20K stack), and apps own ITCM, AXISRAM, and AHBRAM above the
+       first 8K (audio DMA head). Keeping the same ownership here means an app
+       binary that runs on this firmware also runs on retro-go — the whole
+       point of the toolkit. (Anything that must stay DMA1-reachable cannot go
+       in DTCM; tag it .ahb_dma to keep it in AHBRAM.) */
     .data : {
         . = ALIGN(4);
         _data_vma_start = .;
@@ -72,7 +73,7 @@ SECTIONS {
         *(.data*)
         . = ALIGN(4);
         _data_vma_end = .;
-    } > AHBRAM AT > FLASH
+    } > DTCMRAM AT > FLASH
     _data_lma = LOADADDR(.data);
 
     .bss (NOLOAD) : {
@@ -86,12 +87,22 @@ SECTIONS {
         end = .;
         _end = .;
         __end__ = .;
-    } > AHBRAM
+    } > DTCMRAM
 
-    _heap_start = .;                               /* after .bss, in AHBRAM */
-    /* Cap the firmware heap at 48K and leave the rest of AHBRAM to the app
-       (apps that want it can claim everything from _heap_end up). */
-    _heap_end   = ORIGIN(AHBRAM) + 48K;
+    /* DMA1-reachable firmware state (DMA cannot see DTCM). Kept inside the
+       first 8K of AHBRAM — the window apps treat as firmware-owned/uncached. */
+    .ahb_dma (NOLOAD) : {
+        . = ALIGN(4);
+        *(.ahb_dma)
+        . = ALIGN(4);
+    } > AHBRAM
+    ASSERT(SIZEOF(.ahb_dma) <= 8K, ".ahb_dma exceeds the 8K firmware AHB head apps rely on")
+
+    _heap_start = _bss_vma_end;                    /* after .bss, in DTCMRAM */
+    /* Cap the heap below the 20K stack at the top of DTCM (same shape as
+       retro-go: data + bss + heap | stack). */
+    _heap_end   = ORIGIN(DTCMRAM) + LENGTH(DTCMRAM) - 16 - 20K;
+    ASSERT(_heap_end - _heap_start >= 16K, "DTCM heap squeezed below 16K by .data/.bss growth")
 
     /* Stack stays at the top of DTCMRAM; this value is also handed to the app
        as its initial SP. The 16 bytes reserved above it are the boot-magic

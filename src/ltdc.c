@@ -76,6 +76,40 @@ void lcd_set_clut(const uint32_t *clut, uint16_t count) {
 #include <string.h>
 extern uint8_t _frame_buffer[];     // RAM_UC pool base
 
+// MPU map, MIRRORING REAL RETRO-GO (apps depend on this exact ownership):
+//   region 0: AHBRAM 128K @0x30000000 uncached/non-bufferable (audio DMA head;
+//             apps re-carve 0x30004000+ cacheable via their own region 7)
+//   regions 3..6: LCD framebuffer footprint @0x24000000 uncached so the LTDC
+//             sees CPU writes immediately (154K LUT8 = 128+16+8+2)
+// Regions 1/2 (null guard, stack redzone) are retro-go niceties we skip;
+// region 7 is reserved for the app. lcd_setup_framebuffers re-asserts the
+// LCD coverage exactly like retro-go's mpu_set_lcd_pool_uncached_range.
+static void mpu_region(int n, uint32_t base, uint32_t size_log2, int cacheable)
+{
+    volatile uint32_t *MPU_RNR  = (volatile uint32_t *)0xE000ED98;
+    volatile uint32_t *MPU_RBAR = (volatile uint32_t *)0xE000ED9C;
+    volatile uint32_t *MPU_RASR = (volatile uint32_t *)0xE000EDA0;
+    uint32_t rasr = (0x3u << 24) | (1u << 19) | ((size_log2 - 1u) << 1) | 1u;
+    if (cacheable)
+        rasr |= (1u << 17) | (1u << 16);   // C+B: Normal WBWA
+    *MPU_RNR = (uint32_t)n; *MPU_RBAR = base; *MPU_RASR = rasr;
+}
+
+void gnw_mpu_init(void)
+{
+    volatile uint32_t *MPU_CTRL = (volatile uint32_t *)0xE000ED94;
+    __asm__ volatile ("dmb");
+    *MPU_CTRL = 0;                                   // disable while updating
+    mpu_region(0, 0x30000000, 17, 0);                // AHB 128K uncached
+    // LUT8 LCD pool: 154K = 128 + 16 + 8 + 2
+    mpu_region(3, 0x24000000, 17, 0);                // 128K
+    mpu_region(4, 0x24020000, 14, 0);                // 16K
+    mpu_region(5, 0x24024000, 13, 0);                // 8K
+    mpu_region(6, 0x24026000, 11, 0);                // 2K
+    *MPU_CTRL = (1u << 2) | (1u << 1) | 1u;          // PRIVDEFENA|HFNMIENA|ENABLE
+    __asm__ volatile ("dsb; isb");
+}
+
 #define LCD_FB_W 320
 #define LCD_FB_H 240
 
@@ -92,6 +126,7 @@ void lcd_setup_framebuffers(int lcd_mode) {
     HAL_LTDC_SetPixelFormat(&hltdc, LTDC_PIXEL_FORMAT_L8, 0);
     HAL_LTDC_SetAddress(&hltdc, (uint32_t)s_lcd_fb[0], 0);
     HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_VERTICAL_BLANKING);
+    gnw_mpu_init();   // re-assert LCD/AHB coverage, retro-go style
 }
 
 void *lcd_get_active_buffer(void)   { return s_lcd_fb[s_lcd_active]; }

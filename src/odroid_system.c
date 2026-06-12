@@ -85,3 +85,12 @@ void odroid_system_switch_app(int app)
     (void)app;
     power_off();   // does not return
 }
+
+/* retro-go ABI parity: emulators/apps call odroid_system_init(app_id, rate)
+ * before emu_init. Real retro-go reprograms the SAI for `sample_rate`; this
+ * firmware's SAI is fixed at 48 kHz (see audio_sai.c MCKDIV), so a 44.1 kHz
+ * app plays ~9% fast here — accepted test-env skew, noted not hidden. */
+void odroid_system_init(int app_id, int sample_rate)
+{
+    (void)app_id; (void)sample_rate;
+}

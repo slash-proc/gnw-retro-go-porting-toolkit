@@ -88,10 +88,14 @@ void odroid_input_read_gamepad(odroid_gamepad_state_t *out)
     out->values[ODROID_INPUT_RIGHT]  = (m >> 3)  & 1;
     out->values[ODROID_INPUT_A]      = (m >> 4)  & 1;
     out->values[ODROID_INPUT_B]      = (m >> 5)  & 1;
-    out->values[ODROID_INPUT_START]  = (m >> 6)  & 1;
-    out->values[ODROID_INPUT_Y]      = (m >> 7)  & 1;   // TIME
-    out->values[ODROID_INPUT_SELECT] = (m >> 8)  & 1;
-    out->values[ODROID_INPUT_X]      = (m >> 9)  & 1;   // GAME
-    out->values[ODROID_INPUT_MENU]   = (m >> 10) & 1;   // PAUSE
+    /* Slot semantics MUST match real retro-go's odroid_input.c:
+     * START<-GAME, SELECT<-TIME, VOLUME<-PAUSE, X<-START, Y<-SELECT. */
+    out->values[ODROID_INPUT_X]      = (m >> 6)  & 1;   // physical START
+    out->values[ODROID_INPUT_SELECT] = (m >> 7)  & 1;   // physical TIME
+    out->values[ODROID_INPUT_Y]      = (m >> 8)  & 1;   // physical SELECT
+    out->values[ODROID_INPUT_START]  = (m >> 9)  & 1;   // physical GAME
+    out->values[ODROID_INPUT_VOLUME] = (m >> 10) & 1;   // physical PAUSE/SET
+    out->values[ODROID_INPUT_POWER]  = (m >> 11) & 1;
+    out->bitmask = (uint16_t)m;
     out->values[ODROID_INPUT_VOLUME] = (m >> 10) & 1;   // PAUSE (alias)
 }

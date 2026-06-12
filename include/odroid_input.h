@@ -24,13 +24,17 @@ typedef enum {
     ODROID_INPUT_B,
     ODROID_INPUT_MENU,     // overlay trigger (PAUSE/SET on the G&W)
     ODROID_INPUT_VOLUME,   // PAUSE (alias used by some ports, cf. zelda3)
+    ODROID_INPUT_POWER,    // present in REAL retro-go's enum — keep indices equal
     ODROID_INPUT_X,        // GAME
     ODROID_INPUT_Y,        // TIME
     ODROID_INPUT_MAX
 } odroid_input_t;
 
+/* MUST match real retro-go's odroid_gamepad_state_t layout exactly — the
+ * firmware fills this struct through the ABI, so size and offsets are ABI. */
 typedef struct {
     uint8_t values[ODROID_INPUT_MAX];   // 1 = pressed
+    uint16_t bitmask;
 } odroid_gamepad_state_t;
 
 // Raw firmware primitive: 12-bit active-high mask (physical GPIO | remote mailbox).

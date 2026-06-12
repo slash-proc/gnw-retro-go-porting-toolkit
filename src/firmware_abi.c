@@ -24,6 +24,14 @@
 // by littlefs in lfs_flash.c.
 extern void common_ingame_overlay(void);
 extern void odroid_system_switch_app(int app);
+/* loader.c: stand-in for retro-go's odroid_overlay_cache_file_in_flash
+ * (fixed-slot map of the staged WHD; memory-mapped flash IS the cache). */
+extern uint8_t *gnw_storage_map_file(const char *path, uint32_t *size_p, int byte_swap);
+/* No watchdog on the test firmware — but real retro-go runs a WWDG and apps
+ * refresh it through this slot, so it must never be NULL. */
+static void wdog_refresh_noop(void) {}
+extern void odroid_system_init(int app_id, int sample_rate);
+extern void common_emu_input_loop();
 extern volatile unsigned long systick_cnt;
 extern unsigned long get_elapsed_time(void);
 
@@ -49,6 +57,7 @@ const gnw_firmware_abi_t g_firmware_abi = {
     .strncmp  = strncmp,
     .strspn   = strspn,
 
+    .odroid_system_init           = FN(odroid_system_init),
     .odroid_system_emu_init       = FN(odroid_system_emu_init),
     .odroid_system_switch_app     = odroid_system_switch_app,
 
@@ -60,6 +69,10 @@ const gnw_firmware_abi_t g_firmware_abi = {
 
     .odroid_input_read_gamepad = FN(odroid_input_read_gamepad),
 
+    .odroid_overlay_cache_file_in_flash = gnw_storage_map_file,
+
+    .wdog_refresh = wdog_refresh_noop,
+
     .audio_start_playing     = audio_start_playing,
     .audio_get_active_buffer = audio_get_active_buffer,
 
@@ -70,6 +83,7 @@ const gnw_firmware_abi_t g_firmware_abi = {
     .lcd_swap               = lcd_swap,
 
     .common_ingame_overlay = common_ingame_overlay,
+    .common_emu_input_loop = FN(common_emu_input_loop),
 
     .HAL_GetTick = FN(get_elapsed_time),
 

@@ -234,3 +234,26 @@ void common_ingame_overlay(void)
 done:
     return;
 }
+
+// retro-go ABI parity: the standard in-game loop. Real retro-go implements the
+// PAUSE menu + macros (save/load, volume, brightness) and the bare-POWER
+// save+sleep here; this test firmware maps the essentials onto its own
+// blocking overlay so an app exercising the retro-go convention behaves
+// equivalently: PAUSE/SET tap-release -> overlay menu, POWER -> power off.
+#include "odroid_input.h"
+void common_emu_input_loop(odroid_gamepad_state_t *js, void *game_options, void (*repaint)(void))
+{
+    (void)game_options; (void)repaint;
+    static int pause_down;
+    if (js->values[ODROID_INPUT_POWER]) {
+        extern void power_off(void);
+        power_off();                       // does not return
+    }
+    if (js->values[ODROID_INPUT_VOLUME]) {
+        pause_down = 1;
+        js->values[ODROID_INPUT_VOLUME] = 0;   // consume, like retro-go
+    } else if (pause_down) {
+        pause_down = 0;
+        common_ingame_overlay();           // blocking save/load/quit menu
+    }
+}

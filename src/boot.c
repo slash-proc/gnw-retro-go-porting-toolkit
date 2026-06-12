@@ -83,6 +83,10 @@ __attribute__((section(".reset_isr"))) void reset_isr()
     // TODO: Transition to the newer OSPI/LCD drivers
     ltdc_init_lut8((void *) &_frame_buffer);
     lcd_panel_init();   // power on + SPI-init the panel, enable backlight
+
+    // MPU ownership map, mirroring real retro-go (see ltdc.c gnw_mpu_init).
+    extern void gnw_mpu_init(void);
+    gnw_mpu_init();
     
     mm_init();
     test_libc();
