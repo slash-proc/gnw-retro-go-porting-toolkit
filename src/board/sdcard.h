@@ -28,4 +28,9 @@ sd_backend_t sdcard_backend(void);
 // SPI1 peripheral config (defines hspi1). Public so the SD driver can reach it.
 void MX_SPI1_Init(void);
 
+// OSPI<->soft-SPI pin handoff for the Yota9 mod (shared flash pins). ToOspi=1
+// restores memory-mapped flash; ToOspi=0 suspends it and drives the flash pins
+// as GPIO for bit-banging. Called by the soft-SPI SD driver around each op.
+void switch_ospi_gpio(uint8_t ToOspi);
+
 #endif // SDCARD_H

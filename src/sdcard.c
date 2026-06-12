@@ -111,6 +111,43 @@ static void sdcard_deinit_spi1(void)
     HAL_GPIO_WritePin(SD_CS_GPIO_Port,  SD_CS_Pin,  GPIO_PIN_RESET);
 }
 
+// --- OSPI <-> soft-SPI pin handoff (Yota9 mod, faithful to retro-go) ---------
+// The SD card shares the OSPI flash pins. ToOspi=1 restores memory-mapped flash
+// (board_ospi_resume); ToOspi=0 suspends it (board_ospi_suspend) and drives the
+// flash pins as GPIO for bit-banging. The soft-SPI SD driver brackets each op
+// with (0 ... 1). The static guard skips redundant switches.
+void switch_ospi_gpio(uint8_t ToOspi)
+{
+    static uint8_t isOspi = 1;   // OSPI is memory-mapped at boot
+    if (isOspi == ToOspi)
+        return;
+
+    if (ToOspi) {
+        board_ospi_resume();
+    } else {
+        GPIO_InitTypeDef g = {0};
+        board_ospi_suspend();
+
+        HAL_GPIO_WritePin(GPIO_FLASH_NCS_GPIO_Port, GPIO_FLASH_NCS_Pin, GPIO_PIN_RESET);
+        HAL_GPIO_WritePin(GPIO_FLASH_MOSI_GPIO_Port,
+                          GPIO_FLASH_MOSI_Pin | GPIO_FLASH_CLK_Pin, GPIO_PIN_RESET);
+
+        g.Mode  = GPIO_MODE_OUTPUT_PP;
+        g.Pull  = GPIO_NOPULL;
+        g.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        g.Pin   = GPIO_FLASH_NCS_Pin;
+        HAL_GPIO_Init(GPIO_FLASH_NCS_GPIO_Port, &g);
+        g.Pin   = GPIO_FLASH_MOSI_Pin | GPIO_FLASH_CLK_Pin;   /* both on GPIOB */
+        HAL_GPIO_Init(GPIO_FLASH_MOSI_GPIO_Port, &g);
+
+        g.Mode  = GPIO_MODE_INPUT;
+        g.Pull  = GPIO_PULLUP;
+        g.Pin   = GPIO_FLASH_MISO_Pin;
+        HAL_GPIO_Init(GPIO_FLASH_MISO_GPIO_Port, &g);
+    }
+    isOspi = ToOspi;
+}
+
 // --- public probe/mount -----------------------------------------------------
 void sdcard_init(void)
 {
@@ -123,7 +160,14 @@ void sdcard_init(void)
     }
     sdcard_deinit_spi1();
 
-    // TODO(1.2b): soft-SPI (Yota9) fallback via board_ospi_suspend/resume.
+    // Fall back to soft-SPI over the shared flash pins (Yota9 mod). The driver's
+    // disk_initialize brackets the bus handoff itself; just select + mount.
+    s_backend = SD_BACKEND_SOFTSPI;
+    if (f_mount(&s_fatfs, "", 1) == FR_OK) {
+        s_mounted = true;
+        return;
+    }
+    switch_ospi_gpio(1);   // ensure memory-mapped flash is restored on failure
 
     s_backend = SD_BACKEND_NONE;
     s_mounted = false;

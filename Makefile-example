@@ -98,7 +98,9 @@ ifeq ($(SD_CARD),1)
 FW_SRCS += $(FWDIR)/src/sdcard.c \
        $(FWDIR)/deps/FatFs/ff.c $(FWDIR)/deps/FatFs/ffsystem.c \
        $(FWDIR)/deps/FatFs/ffunicode.c $(FWDIR)/deps/FatFs/diskio.c \
-       $(FWDIR)/deps/FatFs/user_diskio_spi.c $(FWDIR)/deps/FatFs/gw_timer.c
+       $(FWDIR)/deps/FatFs/user_diskio_spi.c \
+       $(FWDIR)/deps/FatFs/user_diskio_softspi.c $(FWDIR)/deps/FatFs/softspi.c \
+       $(FWDIR)/deps/FatFs/gw_timer.c
 endif
 
 FW_OBJS = $(FW_SRCS:%.c=build/fw/%.o)

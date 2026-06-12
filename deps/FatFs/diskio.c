@@ -8,31 +8,35 @@
 
 #include "ff.h"
 #include "diskio.h"
-#include "user_diskio_spi.h"   /* USER_SPI_* (SPI1 backend) */
-#include "sdcard.h"            /* sdcard_backend() */
-#include "board.h"             /* board_rtc_get_fattime() */
+#include "user_diskio_spi.h"     /* USER_SPI_* (SPI1 backend) */
+#include "user_diskio_softspi.h" /* USER_SOFTSPI_* (soft-SPI / Yota9 backend) */
+#include "sdcard.h"              /* sdcard_backend() */
+#include "board.h"               /* board_rtc_get_fattime() */
 
 DSTATUS disk_status(BYTE pdrv)
 {
     switch (sdcard_backend()) {
-    case SD_BACKEND_SPI1: return USER_SPI_status(pdrv);
-    default:              return STA_NOINIT;
+    case SD_BACKEND_SPI1:    return USER_SPI_status(pdrv);
+    case SD_BACKEND_SOFTSPI: return USER_SOFTSPI_status(pdrv);
+    default:                 return STA_NOINIT;
     }
 }
 
 DSTATUS disk_initialize(BYTE pdrv)
 {
     switch (sdcard_backend()) {
-    case SD_BACKEND_SPI1: return USER_SPI_initialize(pdrv);
-    default:              return STA_NOINIT;
+    case SD_BACKEND_SPI1:    return USER_SPI_initialize(pdrv);
+    case SD_BACKEND_SOFTSPI: return USER_SOFTSPI_initialize(pdrv);
+    default:                 return STA_NOINIT;
     }
 }
 
 DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count)
 {
     switch (sdcard_backend()) {
-    case SD_BACKEND_SPI1: return USER_SPI_read(pdrv, buff, sector, count);
-    default:              return RES_NOTRDY;
+    case SD_BACKEND_SPI1:    return USER_SPI_read(pdrv, buff, sector, count);
+    case SD_BACKEND_SOFTSPI: return USER_SOFTSPI_read(pdrv, buff, sector, count);
+    default:                 return RES_NOTRDY;
     }
 }
 
@@ -40,8 +44,9 @@ DRESULT disk_read(BYTE pdrv, BYTE *buff, LBA_t sector, UINT count)
 DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
 {
     switch (sdcard_backend()) {
-    case SD_BACKEND_SPI1: return USER_SPI_write(pdrv, buff, sector, count);
-    default:              return RES_NOTRDY;
+    case SD_BACKEND_SPI1:    return USER_SPI_write(pdrv, buff, sector, count);
+    case SD_BACKEND_SOFTSPI: return USER_SOFTSPI_write(pdrv, buff, sector, count);
+    default:                 return RES_NOTRDY;
     }
 }
 #endif
@@ -49,8 +54,9 @@ DRESULT disk_write(BYTE pdrv, const BYTE *buff, LBA_t sector, UINT count)
 DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void *buff)
 {
     switch (sdcard_backend()) {
-    case SD_BACKEND_SPI1: return USER_SPI_ioctl(pdrv, cmd, buff);
-    default:              return RES_NOTRDY;
+    case SD_BACKEND_SPI1:    return USER_SPI_ioctl(pdrv, cmd, buff);
+    case SD_BACKEND_SOFTSPI: return USER_SOFTSPI_ioctl(pdrv, cmd, buff);
+    default:                 return RES_NOTRDY;
     }
 }
 

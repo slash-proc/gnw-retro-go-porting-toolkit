@@ -42,6 +42,16 @@ extern OSPI_HandleTypeDef hospi1;
 #define SD_CS_Pin        GPIO_PIN_9
 extern SPI_HandleTypeDef hspi1;
 
+/* OSPI flash pins, reused for the soft-SPI SD mod (Yota9) bit-bang. */
+#define GPIO_FLASH_NCS_GPIO_Port  GPIOE
+#define GPIO_FLASH_NCS_Pin        GPIO_PIN_11
+#define GPIO_FLASH_MOSI_GPIO_Port GPIOB
+#define GPIO_FLASH_MOSI_Pin       GPIO_PIN_1
+#define GPIO_FLASH_CLK_GPIO_Port  GPIOB
+#define GPIO_FLASH_CLK_Pin        GPIO_PIN_2
+#define GPIO_FLASH_MISO_GPIO_Port GPIOD
+#define GPIO_FLASH_MISO_Pin       GPIO_PIN_12
+
 void Error_Handler(void);
 void wdog_refresh(void);
 
