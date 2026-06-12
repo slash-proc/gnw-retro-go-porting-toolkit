@@ -100,7 +100,8 @@ FW_SRCS += $(FWDIR)/src/sdcard.c \
        $(FWDIR)/deps/FatFs/ffunicode.c $(FWDIR)/deps/FatFs/diskio.c \
        $(FWDIR)/deps/FatFs/user_diskio_spi.c \
        $(FWDIR)/deps/FatFs/user_diskio_softspi.c $(FWDIR)/deps/FatFs/softspi.c \
-       $(FWDIR)/deps/FatFs/vfs_fatfs.c $(FWDIR)/deps/FatFs/gw_timer.c
+       $(FWDIR)/deps/FatFs/vfs_fatfs.c $(FWDIR)/deps/FatFs/gw_timer.c \
+       $(FWDIR)/src/gw_flash_alloc.c $(FWDIR)/deps/Core/Src/crc32.c
 endif
 
 FW_OBJS = $(FW_SRCS:%.c=build/fw/%.o)
@@ -138,7 +139,9 @@ build/firmware.out: $(FW_OBJS) $(FW_LINKER)
 	-Wl,--defsym=__FB_BYTES=$(FB_BYTES) \
 	-Wl,--defsym=__INTFLASH_ORIGIN=$(INTFLASH_ORIGIN) \
 	-Wl,--defsym=__INTFLASH_SIZE=$$(($(INTFLASH_SIZE_KB) * 1024)) \
-	-Wl,--defsym=__EXTFLASH_SIZE=$$(($(EXTFLASH_SIZE_MB) * 1024 * 1024)) -o $@ \
+	-Wl,--defsym=__EXTFLASH_SIZE=$$(($(EXTFLASH_SIZE_MB) * 1024 * 1024)) \
+	-Wl,--defsym=__EXTFLASH_BASE__=0x90000000 \
+	-Wl,--defsym=__EXTFLASH_OFFSET__=$(EXTFLASH_OFFSET) -o $@ \
 	-Wl,--start-group $(FW_OBJS) -lgcc -lc -lm -lnosys -Wl,--end-group
 
 build/firmware.bin: build/firmware.out

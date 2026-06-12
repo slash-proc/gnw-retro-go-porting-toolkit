@@ -48,6 +48,13 @@ static int abi_f_opendir(void *dp, const char *path) { return f_opendir((DIR *)d
 static int abi_f_readdir(void *dp, void *fno)        { return f_readdir((DIR *)dp, (FILINFO *)fno); }
 static int abi_f_closedir(void *dp)                  { return f_closedir((DIR *)dp); }
 static int abi_sdcard_mkdir(const char *path)        { return f_mkdir(path); }
+// Round-robin OSPI cache: stage an SD file into external flash, return its XIP
+// pointer (gw_flash_alloc.c). No progress UI on the test firmware.
+#include "gw_flash_alloc.h"
+static uint8_t *abi_cache_file(const char *path, uint32_t *size_p, int byte_swap)
+{
+    return store_file_in_flash(path, size_p, byte_swap, 0);
+}
 #endif
 
 // Firmware signatures don't all match the ABI's generic prototypes exactly (printf
@@ -95,7 +102,11 @@ const gnw_firmware_abi_t g_firmware_abi = {
 
     .odroid_input_read_gamepad = FN(odroid_input_read_gamepad),
 
-    .odroid_overlay_cache_file_in_flash = gnw_storage_map_file,
+#if SD_CARD == 1
+    .odroid_overlay_cache_file_in_flash = abi_cache_file,      // SD -> round-robin OSPI cache
+#else
+    .odroid_overlay_cache_file_in_flash = gnw_storage_map_file, // fixed-slot WHD stand-in
+#endif
 
     .wdog_refresh = wdog_refresh_noop,
 
