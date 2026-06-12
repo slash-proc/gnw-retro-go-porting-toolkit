@@ -156,6 +156,8 @@ int lfs_flash_read(const char *path, void *buf, uint32_t max) {
 }
 
 // ---------------------------------------------------------------------------
+#if SD_CARD == 0   // SD_CARD==1 routes the stdio VFS to FatFs (vfs_fatfs.c)
+// ---------------------------------------------------------------------------
 // stdio (the retro-go plugin VFS shape) over littlefs. Apps see fopen/fread/...
 // and never littlefs. FILE is void* (toolkit include/stdio.h); each open file
 // is a pool slot wrapping an lfs_file_t with its own cache (LFS_NO_MALLOC). Apps
@@ -221,3 +223,4 @@ int remove(const char *path) {
     int rc = lfs_remove(&s_lfs, path);
     return (rc == 0 || rc == LFS_ERR_NOENT) ? 0 : -1;
 }
+#endif // SD_CARD == 0

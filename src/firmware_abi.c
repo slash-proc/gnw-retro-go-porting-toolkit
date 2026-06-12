@@ -18,6 +18,9 @@
 #include "odroid_input.h"
 #include "audio_sai.h"
 #include "ltdc.h"
+#if SD_CARD == 1
+#include "ff.h"   // FatFs dir/mkdir for the SD-backed ABI slots
+#endif
 
 // Firmware functions/data not in a public header.
 // stdio VFS (fopen/fclose/fread/fwrite/remove) is declared in <stdio.h> and backed
@@ -34,6 +37,18 @@ extern void odroid_system_init(int app_id, int sample_rate);
 extern void common_emu_input_loop();
 extern volatile unsigned long systick_cnt;
 extern unsigned long get_elapsed_time(void);
+
+#if SD_CARD == 1
+// feof/ferror live in vfs_fatfs.c but aren't in the toolkit's minimal <stdio.h>.
+int feof(FILE *stream);
+int ferror(FILE *stream);
+// FatFs directory + mkdir bridged to the ABI's opaque-pointer slots. The app
+// allocates DIR/FILINFO-sized buffers (it includes ff.h too) and passes them in.
+static int abi_f_opendir(void *dp, const char *path) { return f_opendir((DIR *)dp, path); }
+static int abi_f_readdir(void *dp, void *fno)        { return f_readdir((DIR *)dp, (FILINFO *)fno); }
+static int abi_f_closedir(void *dp)                  { return f_closedir((DIR *)dp); }
+static int abi_sdcard_mkdir(const char *path)        { return f_mkdir(path); }
+#endif
 
 // Firmware signatures don't all match the ABI's generic prototypes exactly (printf
 // returns void here, size_t is unsigned long, odroid_system_emu_init takes typed
@@ -66,6 +81,17 @@ const gnw_firmware_abi_t g_firmware_abi = {
     .fread   = fread,
     .fwrite  = fwrite,
     .remove  = remove,
+#if SD_CARD == 1
+    // SD-backed file/dir ops (FatFs VFS in vfs_fatfs.c + FatFs dir API).
+    .fseek    = fseek,
+    .ftell    = ftell,
+    .feof     = feof,
+    .ferror   = ferror,
+    .f_opendir  = abi_f_opendir,
+    .f_readdir  = abi_f_readdir,
+    .f_closedir = abi_f_closedir,
+    .odroid_sdcard_mkdir = abi_sdcard_mkdir,
+#endif
 
     .odroid_input_read_gamepad = FN(odroid_input_read_gamepad),
 

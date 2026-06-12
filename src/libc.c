@@ -176,7 +176,8 @@ int sscanf(const char *str, const char *format, ...)
 
 // fopen/fclose/fread/fwrite/remove are implemented over littlefs in lfs_flash.c
 // (the VFS layer). fseek/ftell/fflush stay here (unused by the save path).
-
+// When SD_CARD==1 the FatFs VFS (vfs_fatfs.c) provides real fseek/ftell instead.
+#if SD_CARD == 0
 int fseek(FILE *stream, long offset, int whence)
 {
     printf("fseek not implemented");
@@ -192,6 +193,7 @@ long ftell(FILE *stream)
         ;
     return -1;
 }
+#endif // SD_CARD == 0
 
 __attribute__((weak)) int fflush(FILE *stream)
 {
