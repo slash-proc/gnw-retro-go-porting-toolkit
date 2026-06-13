@@ -762,3 +762,66 @@ void SystemClock_Config(void)
   FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | FLASH_ACR_LATENCY_2WS;
 #endif
 }
+
+#ifndef STUB
+/* ---- Runtime CPU overclock (set from the in-game overlay's OVERCLOCK item) ----
+ * 1:1 with retro-go's BOOST table. Only PLL1 (the core clock) changes; OSPI runs
+ * off per_ck=HSI (independent of PLL1, verified over SWD), so XIP/flash stay in
+ * spec at every level. VOS0 + FLASH_LATENCY_7 are already programmed above and
+ * retro-go runs all three levels on exactly that config. We park SYSCLK on HSI to
+ * reprogram PLL1, relock, switch back, then re-derive SystemCoreClock + SysTick so
+ * the 1 kHz tick (HAL_Delay/HAL_GetTick) stays exact. Q is lowered at the higher
+ * VCOs (like retro-go) to keep PLL1Q-fed peripherals in spec. */
+static const struct { uint16_t m, n, q; uint32_t rge, hz; } OC_TABLE[] = {
+    { 16, 140, 2, RCC_PLL1VCIRANGE_2, 280000000u },  /* stock          */
+    { 16, 156, 6, RCC_PLL1VCIRANGE_2, 312000000u },  /* retro-go BOOST1 */
+    { 38, 420, 7, RCC_PLL1VCIRANGE_0, 353473684u },  /* retro-go BOOST2 */
+};
+#define OC_NLEVELS ((int)(sizeof(OC_TABLE) / sizeof(OC_TABLE[0])))
+
+static int s_oc_level = 0;   /* boot is stock 280 MHz */
+
+int      board_overclock_levels(void) { return OC_NLEVELS; }
+int      board_get_overclock(void)    { return s_oc_level; }
+uint32_t board_overclock_hz(int level)
+{
+    if (level < 0) level = 0;
+    if (level >= OC_NLEVELS) level = OC_NLEVELS - 1;
+    return OC_TABLE[level].hz;
+}
+
+void board_set_overclock(int level)
+{
+    if (level < 0) level = 0;
+    if (level >= OC_NLEVELS) level = OC_NLEVELS - 1;
+    const uint32_t m = OC_TABLE[level].m, n = OC_TABLE[level].n, q = OC_TABLE[level].q,
+                   rge = OC_TABLE[level].rge, hz = OC_TABLE[level].hz;
+
+    __disable_irq();
+    /* 1. Park SYSCLK on HSI so PLL1 can be reprogrammed. */
+    MODIFY_REG(RCC->CFGR, RCC_CFGR_SW, RCC_SYSCLKSOURCE_HSI);
+    while ((RCC->CFGR & RCC_CFGR_SWS) != (RCC_SYSCLKSOURCE_HSI << RCC_CFGR_SWS_Pos)) {}
+    /* 2. Disable PLL1. */
+    RCC->CR &= ~RCC_CR_PLL1ON;
+    while (RCC->CR & RCC_CR_PLL1RDY) {}
+    /* 3. Program M (PLLCKSELR), N+Q (PLL1DIVR, keep P/R), input range (PLLCFGR). */
+    MODIFY_REG(RCC->PLLCKSELR, RCC_PLLCKSELR_DIVM1, ((uint32_t)m << RCC_PLLCKSELR_DIVM1_Pos));
+    MODIFY_REG(RCC->PLL1DIVR, (RCC_PLL1DIVR_N1 | RCC_PLL1DIVR_Q1),
+               (((uint32_t)(n - 1U)) & RCC_PLL1DIVR_N1)
+               | ((((uint32_t)(q - 1U)) << RCC_PLL1DIVR_Q1_Pos) & RCC_PLL1DIVR_Q1));
+    MODIFY_REG(RCC->PLLCFGR, RCC_PLLCFGR_PLL1RGE, rge);
+    /* 4. Re-enable PLL1 and wait for lock. */
+    RCC->CR |= RCC_CR_PLL1ON;
+    while (!(RCC->CR & RCC_CR_PLL1RDY)) {}
+    /* 5. Switch SYSCLK back onto PLL1. */
+    MODIFY_REG(RCC->CFGR, RCC_CFGR_SW, RCC_SYSCLKSOURCE_PLLCLK);
+    while ((RCC->CFGR & RCC_CFGR_SWS) != (RCC_SYSCLKSOURCE_PLLCLK << RCC_CFGR_SWS_Pos)) {}
+    /* 6. Re-derive timebase for the new HCLK. */
+    SystemCoreClock = hz;
+    SysTick->LOAD   = hz / 1000U - 1U;
+    SysTick->VAL    = 0U;
+    __enable_irq();
+
+    s_oc_level = level;
+}
+#endif

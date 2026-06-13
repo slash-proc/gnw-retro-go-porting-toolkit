@@ -13,6 +13,12 @@ void board_gpio_init(GPIO_TypeDef *g, uint32_t pins, uint32_t mode,
                      uint32_t pull, uint32_t speed, uint32_t af);
 void board_early_init(void);
 void board_clocks_init(void);
+/* Runtime CPU overclock (set from the in-game overlay). Only PLL1 changes; OSPI is
+ * on HSI so XIP stays in spec. Level 0=280, 1=312, 2=353 MHz (retro-go's table). */
+void     board_set_overclock(int level);
+int      board_get_overclock(void);
+int      board_overclock_levels(void);
+uint32_t board_overclock_hz(int level);
 void board_gpios_init(void);
 void board_lcd_gpios_init(void);
 bool board_ospi_init(void);

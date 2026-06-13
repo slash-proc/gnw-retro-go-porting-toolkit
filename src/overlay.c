@@ -94,9 +94,17 @@ static const char *const MENU_ITEMS[] = {
     "RESUME GAME",
     "SAVE GAME",
     "LOAD GAME",
+    "OVERCLOCK",         // value item: Left/Right cycles the CPU clock
     "QUIT TO LAUNCHER",
 };
 #define N_ITEMS ((int)(sizeof(MENU_ITEMS) / sizeof(MENU_ITEMS[0])))
+#define OC_ITEM   3      // index of the OVERCLOCK row above
+
+// Firmware CPU overclock (board.c). Only PLL1 changes; OSPI is on HSI so XIP is safe.
+extern void board_set_overclock(int level);
+extern int  board_get_overclock(void);
+extern int  board_overclock_levels(void);
+static const char *const OC_LABELS[] = { "< 280 MHz >", "< 312 MHz >", "< 353 MHz >" };
 
 static void draw_menu(int sel, const char *status)
 {
@@ -117,6 +125,10 @@ static void draw_menu(int sel, const char *status)
         if (i == sel)
             draw_str(bx + 14, iy, ">", g_text, 1);
         draw_str(bx + 28, iy, MENU_ITEMS[i], g_text, 1);
+        if (i == OC_ITEM) {   // append the current "< NNN MHz >" value, right side
+            const char *v = OC_LABELS[board_get_overclock()];
+            draw_str(bx + bw - 14 - str_w(v, 1), iy, v, g_text, 1);
+        }
         iy += 16;
     }
     if (status)
@@ -201,6 +213,14 @@ void common_ingame_overlay(void)
         if (edge & (1u << 0)) { sel = (sel + N_ITEMS - 1) % N_ITEMS; draw_menu(sel, 0); }  // Up
         if (edge & (1u << 1)) { sel = (sel + 1) % N_ITEMS;          draw_menu(sel, 0); }   // Down
 
+        // Left/Right adjusts the OVERCLOCK value in place (applied immediately).
+        if ((edge & ((1u << 2) | (1u << 3))) && sel == OC_ITEM) {
+            int n = board_overclock_levels();
+            int d = (edge & (1u << 3)) ? 1 : (n - 1);   // Right=+1, Left=-1
+            board_set_overclock((board_get_overclock() + d) % n);
+            draw_menu(sel, 0);
+        }
+
         // B or PAUSE closes (resume).
         if (edge & ((1u << 5) | (1u << 10)))
             goto done;
@@ -221,7 +241,13 @@ void common_ingame_overlay(void)
                 odroid_system_emu_load_state(slot);
                 goto done;
             }
-            case 3:   // Quit to launcher (boot menu) — resets, never returns.
+            case OC_ITEM: {  // Overclock: A cycles forward (same as Right), stay in menu
+                int n = board_overclock_levels();
+                board_set_overclock((board_get_overclock() + 1) % n);
+                draw_menu(sel, 0);
+                continue;
+            }
+            case 4:   // Quit to launcher (boot menu) — resets, never returns.
                 odroid_system_sram_save();   // flush settings before we leave
                 *(volatile uint32_t *)SRAM_MAGIC_ADDR   = BOOT_MAGIC_FORCE;
                 *(volatile uint32_t *)SRAM_MAGIC_TARGET = 0x08000000;
