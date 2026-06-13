@@ -421,11 +421,9 @@ char *strrchr(const char *s, int c)
 
 char *strstr(const char *haystack, const char *needle)
 {
-    printf("strstr not implemented");
-    while (1)
-        ;
-    return 0;
     size_t n = strlen(needle);
+    if (!n)
+        return (char *) haystack;
     while (*haystack) {
         if (!memcmp(haystack, needle, n))
             return (char *) haystack;
