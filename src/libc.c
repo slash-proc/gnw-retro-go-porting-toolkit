@@ -504,12 +504,11 @@ int memcmp(const void *s1, const void *s2, size_t n)
 {
     const unsigned char *x = s1;
     const unsigned char *y = s2;
-    while (n && (*x++ == *y++))
-        n--;
-
-    if (!n)
-        return 0;
-    return *(const unsigned char *) x - *(const unsigned char *) y;
+    for (; n; n--, x++, y++) {
+        if (*x != *y)
+            return (int)*x - (int)*y;   /* compare the FIRST differing byte */
+    }
+    return 0;
 }
 
 size_t strcspn(const char *s, const char *reject)

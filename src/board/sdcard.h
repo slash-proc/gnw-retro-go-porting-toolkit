@@ -28,6 +28,22 @@ sd_backend_t sdcard_backend(void);
 // SPI1 peripheral config (defines hspi1). Public so the SD driver can reach it.
 void MX_SPI1_Init(void);
 
+// --- SD bring-up self-test (SWD-readable) -----------------------------------
+// A debugger can read g_sd_probe after boot to confirm the SD stack mounted and
+// can list the root, without a UART (magic == 0x5DCAFE01 once populated).
+#include <stdint.h>
+#define SD_PROBE_MAX_ENTRIES 8
+#define SD_PROBE_NAME_LEN    64
+typedef struct {
+    uint32_t magic;        // 0x5DCAFE01 once populated
+    uint32_t mounted;      // sdcard_mounted()
+    uint32_t backend;      // sd_backend_t (0 none / 1 SPI1 / 2 soft-SPI)
+    uint32_t count;        // number of root entries captured
+    char     names[SD_PROBE_MAX_ENTRIES][SD_PROBE_NAME_LEN];
+} sd_probe_t;
+extern volatile sd_probe_t g_sd_probe;
+void sdcard_selftest(void);   // list "/" into g_sd_probe
+
 // OSPI<->soft-SPI pin handoff for the Yota9 mod (shared flash pins). ToOspi=1
 // restores memory-mapped flash; ToOspi=0 suspends it and drives the flash pins
 // as GPIO for bit-banging. Called by the soft-SPI SD driver around each op.

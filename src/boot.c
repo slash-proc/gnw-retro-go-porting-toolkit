@@ -100,6 +100,9 @@ __attribute__((section(".reset_isr"))) void reset_isr()
     // Mount the SD-card filesystem (FAT) — probes SPI1 then soft-SPI.
     extern void sdcard_init(void);
     sdcard_init();
+    // Bring-up self-test: list "/" into g_sd_probe (readable over SWD).
+    extern void sdcard_selftest(void);
+    sdcard_selftest();
 #endif
 
     // "Fake retro-go" launch: find the app image on extflash (wherever it was

@@ -63,32 +63,37 @@ static void DESELECT(void)
     HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);
 }
 
-/* SPI transmit a byte */
-static void SPI_TxByte(uint8_t data)
+/* Bare-metal H7 SPI1 byte exchange. The HAL_SPI_Transmit/TransmitReceive path
+ * corrupts SD block reads on the STM32H7 (the init handshake limps through but
+ * 512-byte reads come back wrong -> FatFs reports FR_NO_FILESYSTEM). Drive one
+ * byte per transfer: TSIZE=1, SPE, CSTART, push TXDR, wait EOT, pop RXDR, clear
+ * flags, SPE off. Proven approach from gnw-chainloader storage/sdcard.c. The
+ * peripheral's mode/prescaler is still set up by FCLK_*'s HAL_SPI_Init. */
+static uint8_t spi1_xchg(uint8_t out)
 {
-    while (!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE))
-        ;
-    HAL_SPI_Transmit(HSPI_SDCARD, &data, 1, SPI_TIMEOUT);
+    SPI1->CR2 = 1;                          /* TSIZE = 1 byte */
+    SPI1->CR1 |= SPI_CR1_SPE;
+    SPI1->CR1 |= SPI_CR1_CSTART;
+    *(volatile uint8_t *)&SPI1->TXDR = out;
+    uint32_t guard = 100000u;
+    while (!(SPI1->SR & SPI_SR_EOT) && --guard) { }
+    uint8_t in = *(volatile uint8_t *)&SPI1->RXDR;
+    SPI1->IFCR = SPI_IFCR_EOTC | SPI_IFCR_TXTFC;
+    SPI1->CR1 &= ~SPI_CR1_SPE;
+    return in;
 }
+
+/* SPI transmit a byte */
+static void SPI_TxByte(uint8_t data) { (void)spi1_xchg(data); }
 
 /* SPI transmit buffer */
 static void SPI_TxBuffer(const uint8_t *buffer, uint16_t len)
 {
-    while (!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE))
-        ;
-    HAL_SPI_Transmit(HSPI_SDCARD, (uint8_t *)buffer, len, SPI_TIMEOUT);
+    while (len--) (void)spi1_xchg(*buffer++);
 }
 
 /* SPI receive a byte */
-static uint8_t SPI_RxByte(void)
-{
-    uint8_t dummy, data;
-    dummy = 0xFF;
-    while (!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE))
-        ;
-    HAL_SPI_TransmitReceive(HSPI_SDCARD, &dummy, &data, 1, SPI_TIMEOUT);
-    return data;
-}
+static uint8_t SPI_RxByte(void) { return spi1_xchg(0xFF); }
 
 //-----[ SD Card Functions ]-----
 

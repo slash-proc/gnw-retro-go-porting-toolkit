@@ -183,3 +183,34 @@ void sdcard_deinit(void)
         sdcard_deinit_spi1();
     s_backend = SD_BACKEND_NONE;
 }
+
+// --- SD bring-up self-test (SWD-readable) -----------------------------------
+// Lists the root directory into a global struct so a debugger can confirm the
+// SD stack works end-to-end without a UART. Read g_sd_probe over SWD after boot
+// (memory.py); magic == 0x5DCAFE01 once populated.
+volatile sd_probe_t g_sd_probe __attribute__((used));
+
+void sdcard_selftest(void)
+{
+    static DIR     dir;     // large (LFN) — keep off the boot stack
+    static FILINFO fno;
+
+    g_sd_probe.magic       = 0;
+    g_sd_probe.mounted     = sdcard_mounted();
+    g_sd_probe.backend     = (uint32_t)sdcard_backend();
+    g_sd_probe.count       = 0;
+
+    if (f_opendir(&dir, "/") == FR_OK) {
+        uint32_t n = 0;
+        while (n < SD_PROBE_MAX_ENTRIES) {
+            if (f_readdir(&dir, &fno) != FR_OK) break;
+            if (fno.fname[0] == 0) break;                 // end of dir
+            for (int i = 0; i < SD_PROBE_NAME_LEN - 1 && fno.fname[i]; i++)
+                g_sd_probe.names[n][i] = fno.fname[i];
+            n++;
+        }
+        f_closedir(&dir);
+        g_sd_probe.count = n;
+    }
+    g_sd_probe.magic = 0x5DCAFE01u;
+}
