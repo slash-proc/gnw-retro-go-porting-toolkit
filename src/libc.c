@@ -67,12 +67,13 @@ void printf(const char *fmt, ...)
     va_end(arg);
 }
 
-void snprintf(char *dst, unsigned long size, const char *fmt, ...)
+int snprintf(char *dst, unsigned long size, const char *fmt, ...)
 {
     va_list arg;
     va_start(arg, fmt);
-    vsnprintf(dst, size, fmt, arg);
+    int n = vsnprintf(dst, size, fmt, arg);
     va_end(arg);
+    return n;
 }
 
 int vsnprintf(char *dst, unsigned long size, const char *fmt, va_list arg)

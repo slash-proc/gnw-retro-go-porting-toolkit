@@ -17,9 +17,13 @@ void printf(const char *fmt, ...);
 
 #define fprintf(ignore, fmt, ...) printf(fmt, ##__VA_ARGS__)
 
-void snprintf(char *dst, unsigned long size, const char *fmt, ...);
+/* snprintf/sprintf return the character count (standard C, and the engine relies
+ * on it, e.g. `n = snprintf(...)`); the underlying ABI vsnprintf/vsprintf are int. */
+int snprintf(char *dst, unsigned long size, const char *fmt, ...);
+int sprintf(char *dst, const char *fmt, ...);
 
 int vsnprintf(char *dst, unsigned long size, const char *fmt, va_list arg);
+int vsprintf(char *dst, const char *fmt, va_list arg);
 int sscanf(const char *str, const char *format, ...);
 
 #define FILE void

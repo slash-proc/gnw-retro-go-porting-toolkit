@@ -41,6 +41,8 @@ void *memcpy(void *dst, const void *src, size_t n);
 void *memmove(void *dst, const void *src, size_t n);
 size_t strcspn(const char *s, const char *reject);
 size_t strspn(const char *s, const char *accept);
+char *strcat(char *dst, const char *src);
+char *strncat(char *dst, const char *src, size_t n);
 
 int toupper(int c);
 
